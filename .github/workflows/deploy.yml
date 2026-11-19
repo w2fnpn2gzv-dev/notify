@@ -1,0 +1,37 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore binary icons from icons.b64
+        run: |
+          mkdir -p icons
+          while read -r name b64; do
+            printf '%s' "$b64" | base64 -d > "icons/$name"
+          done < icons.b64
+      - name: Assemble site
+        run: |
+          mkdir -p /tmp/site
+          rsync -a --exclude='.github' --exclude='icons.b64' --exclude='.backup' ./ /tmp/site/
+          ls -la /tmp/site/icons
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

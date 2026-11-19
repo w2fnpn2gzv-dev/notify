@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Notify">
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171f" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23151a2e'/%3E%3Cpath d='M50 26a4 4 0 0 1 4 4v2c8 2 14 9 14 17v9c0 2 .9 4 2.5 5.5l3 3c1 1 .3 2.7-1.1 2.7H27.6c-1.4 0-2.1-1.7-1.1-2.7l3-3A8 8 0 0 0 32 58v-9c0-8 6-15 14-17v-2a4 4 0 0 1 4-4z' fill='%23e8edf8'/%3E%3Ccircle cx='50' cy='72' r='5' fill='%23e8edf8'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Notify</title>
+<style>
+:root{
+  --ink:#1c1c1e; --sub:#8a8a8e; --line:#e6e5e1; --paper:#f6f5f1;
+  --red:#ff3b30; --lime:#b6e536; --blue:#3478f6;
+  --mine1:rgba(124,110,200,.55); --mine2:rgba(96,140,210,.48);
+  --glass:rgba(255,255,255,.55);
+  --chatbg:linear-gradient(160deg,#cdbcf7 0%,#b7c4f4 38%,#a9d3f2 70%,#bfe9e0 100%);
+  --shadow:0 6px 18px rgba(90,100,150,.14);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --ink:#e9ecf5; --sub:#8b93a7; --line:#2a2f3d; --paper:#15171f;
+    --chatbg:linear-gradient(160deg,#0e1224 0%,#131a33 45%,#0f2030 100%);
+    --glass:rgba(255,255,255,.09);
+    --mine1:rgba(112,96,208,.55); --mine2:rgba(64,116,196,.5);
+    --shadow:0 6px 22px rgba(0,0,0,.45);
+  }
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%;overflow:hidden;background:#e8e7e2}
+body{
+  position:relative;height:100%;height:var(--app-h,100%);overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--paper);color:var(--ink);
+  -webkit-font-smoothing:antialiased;text-size-adjust:100%;
+}
+@media (min-width:720px){
+  html{background:linear-gradient(160deg,#eceaf4,#e2e9f0)}
+  body{max-width:460px;margin:0 auto;box-shadow:0 0 70px rgba(60,60,110,.18)}
+}
+.view{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+.view.active{display:flex}
+button{font-family:inherit;border:none;background:none;color:inherit;cursor:pointer}
+button:disabled{opacity:.55;pointer-events:none}
+input,textarea{font-family:inherit;border:none;outline:none;background:none;color:inherit}
+/* iOS 上输入框字号小于 16px 会自动放大整页，这里统一兜到 16px */
+input,textarea{font-size:16px}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+
+/* ============ 记事页（白瓷苹果风） ============ */
+#view-note{background:var(--paper);padding-top:var(--safe-t)}
+.note-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px 9px;border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px}
+.app-icon{width:28px;height:28px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.2);display:block}
+#noteTitle{
+  font-size:20px;font-weight:800;letter-spacing:.3px;
+  display:flex;align-items:center;gap:7px;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;padding:2px 4px;margin-left:-4px;
+}
+.badge{
+  min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--red);
+  color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px rgba(255,59,48,.4);
+}
+.badge.hidden{display:none}
+.ghost{font-size:15px;color:var(--sub);padding:6px 6px;user-select:none;-webkit-user-select:none}
+.paper{flex:1;min-height:0;overflow:hidden;padding:16px 20px}
+#noteArea{
+  width:100%;height:100%;resize:none;font-size:16px;line-height:1.75;
+  color:var(--ink);background:transparent;
+}
+.note-toolbar{
+  display:flex;justify-content:space-around;align-items:center;
+  padding:9px 8px calc(9px + var(--safe-b));border-top:1px solid var(--line);
+  color:var(--sub);font-size:19px;background:var(--paper);
+}
+.note-toolbar span{opacity:.55}
+.note-saved{
+  position:fixed;top:calc(16px + var(--safe-t));right:76px;
+  font-size:11px;color:var(--sub);opacity:0;transition:opacity .3s ease;
+  pointer-events:none;z-index:5;
+}
+.note-saved.on{opacity:.85}
+
+/* ============ 配对页 ============ */
+#view-pair{
+  background:var(--chatbg);padding:calc(40px + var(--safe-t)) 22px calc(24px + var(--safe-b));
+  justify-content:center;gap:14px;
+}
+.pair-card{
+  background:var(--glass);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  border:1px solid rgba(255,255,255,.45);border-radius:26px;padding:24px 20px;
+  box-shadow:0 18px 50px rgba(60,60,120,.22);
+  display:flex;flex-direction:column;gap:14px;
+}
+.pair-card h2{font-size:19px;font-weight:800;text-align:center}
+.pair-card p{font-size:13px;color:var(--sub);text-align:center;line-height:1.6}
+.code-input{
+  font-size:32px;font-weight:800;letter-spacing:12px;text-align:center;
+  background:rgba(255,255,255,.6);border-radius:16px;padding:14px 10px 14px 18px;
+  border:1px solid rgba(255,255,255,.7);color:var(--ink);
+}
+@media (prefers-color-scheme: dark){.code-input{background:rgba(255,255,255,.1)}}
+.btn-main{
+  background:linear-gradient(135deg,#8f7ae5,#5aa7d8);color:#fff;font-size:16px;font-weight:700;
+  padding:14px;border-radius:16px;box-shadow:0 8px 24px rgba(100,90,190,.32);
+}
+.btn-sub{color:var(--sub);font-size:14px;padding:10px;text-align:center}
+.pair-status{font-size:13px;text-align:center;color:var(--sub);min-height:18px;line-height:1.5}
+#pairBack{color:rgba(40,40,70,.55);font-size:13px;padding:12px 0 2px;text-align:center;letter-spacing:.5px}
+@media (prefers-color-scheme: dark){#pairBack{color:rgba(220,225,240,.55)}}
+
+/* ============ 聊天页（薰衣草玻璃） ============ */
+#view-chat{background:var(--chatbg);padding-top:var(--safe-t)}
+.chat-head{
+  display:flex;align-items:center;gap:8px;padding:8px 12px 10px;flex-shrink:0;
+}
+.back-btn{
+  width:34px;height:34px;border-radius:12px;background:rgba(255,255,255,.5);
+  display:flex;align-items:center;justify-content:center;font-size:21px;color:var(--ink);
+  box-shadow:0 2px 8px rgba(80,90,140,.15);flex-shrink:0;
+}
+@media (prefers-color-scheme: dark){.back-btn{background:rgba(255,255,255,.1)}}
+.chat-title-wrap{flex:1;text-align:center;min-width:0}
+.chat-title{font-size:16.5px;font-weight:800;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-date{font-size:10.5px;color:var(--sub);margin-top:1px}
+.head-spacer{width:34px;flex-shrink:0}
+.chat-body{
+  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding:4px 14px calc(10px + var(--kb,0px));display:flex;flex-direction:column;gap:10px;
+}
+.daybar{text-align:center;font-size:11px;color:var(--sub);letter-spacing:1px;padding:2px 0 6px}
+/* flex-shrink:0 很关键：不加的话内容超过一屏时各气泡会被 flex 压缩，
+   压缩量与内容高度互相牵制，滚动时会来回抖（图片消息尤其明显） */
+.row{display:flex;align-items:flex-end;gap:8px;flex-shrink:0}
+.row.mine{justify-content:flex-end}
+.bubble{
+  max-width:74%;padding:10px 14px;font-size:15px;line-height:1.45;border-radius:21px;
+  position:relative;word-break:break-word;
+  /* 关键：不加这三行，iOS/Chromium 长按会弹出系统菜单并发出 touchcancel，
+     把"长按撤回"的计时直接取消掉（真机上表现为按了没反应） */
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
+.bubble.hers{
+  background:var(--glass);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,.55);border-bottom-left-radius:7px;box-shadow:var(--shadow);
+}
+.bubble.mine{
+  background:linear-gradient(150deg,var(--mine1),var(--mine2));
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,.3);border-bottom-right-radius:7px;
+  color:#fff;box-shadow:0 8px 22px rgba(100,90,190,.26);
+}
+.meta{font-size:10px;margin-top:4px;text-align:right;color:rgba(255,255,255,.75);font-weight:600;
+  display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.meta.read{color:var(--lime)}
+.meta .cd{font-variant-numeric:tabular-nums}
+.meta .cd.warn{color:#ff9d9d;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.4}}
+.recalled-tip{font-size:12px;color:var(--sub);padding:1px 6px}
+.locked-tip{opacity:.85}
+
+/* 图片大图查看器（全屏 + 缩放） */
+.img-viewer{
+  position:fixed;inset:0;background:#07070d;z-index:60;
+  opacity:0;transition:opacity .22s ease;
+  -webkit-touch-callout:none;user-select:none;-webkit-user-select:none;
+}
+.img-viewer.on{opacity:1}
+.img-viewer .stage{
+  position:absolute;inset:0;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  touch-action:none;
+}
+.img-viewer img{
+  max-width:100%;max-height:100%;width:auto;height:auto;
+  transform:scale(.94);transition:transform .2s ease;
+  -webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:none;
+}
+.img-viewer.on img{transform:scale(1)}
+.img-viewer .close{
+  position:fixed;top:calc(12px + var(--safe-t));right:16px;
+  width:40px;height:40px;border-radius:50%;color:#fff;font-size:17px;
+  background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;
+}
+.img-viewer .hint{
+  position:fixed;bottom:calc(14px + var(--safe-b));left:0;right:0;
+  text-align:center;color:rgba(255,255,255,.6);font-size:12px;letter-spacing:.5px;
+}
+.img-bubble img{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.unread-divider{display:flex;align-items:center;gap:10px;margin:4px 0}
+.unread-divider .l{flex:1;height:1px;background:rgba(120,90,200,.3)}
+.unread-divider .t{
+  font-size:11px;font-weight:700;color:#7a5fd0;background:rgba(255,255,255,.55);
+  padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.6);
+  display:flex;align-items:center;gap:6px;
+}
+.unread-divider .d{width:6px;height:6px;border-radius:50%;background:var(--red)}
+.empty-chat{text-align:center;color:var(--sub);font-size:13px;padding-top:38vh;opacity:.8}
+/* 图片气泡：宽度固定、高度由 aspect-ratio 预先占位（见 app.js），
+   这样图片解码前后布局高度一致，任何重绘都不会造成跳屏 */
+.img-bubble{padding:0;overflow:hidden;width:230px;max-width:62%;flex-shrink:0}
+.img-bubble img{display:block;width:100%;height:auto;border-radius:20px;
+  background:rgba(150,160,200,.16)}
+.voice-bubble{display:flex;align-items:center;gap:9px;min-width:130px}
+.voice-bubble .ply{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.8);
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:#5a6bb0;flex-shrink:0}
+.voice-bubble .wv{display:flex;align-items:center;gap:2px;flex:1;height:18px}
+.voice-bubble .wv i{width:2.5px;border-radius:2px;background:currentColor;opacity:.65;display:block}
+.dur{font-size:11px;opacity:.8;font-weight:600}
+
+/* 输入区 */
+.inputbar{
+  flex-shrink:0;display:flex;align-items:center;gap:8px;position:relative;z-index:2;
+  padding:8px 12px calc(8px + var(--safe-b));
+  background:rgba(255,255,255,.35);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  border-top:1px solid rgba(255,255,255,.45);
+  /* 键盘弹起时整体上抬到键盘正上方（--kb 由 JS 每帧实测写入，
+     微信式逐帧跟随，无过渡动画——跟随本身就是平滑的），
+     布局不再压缩，Safari 的预判滚动无事可做，页面不再被顶飞 */
+  transform:translateY(calc(var(--kb,0px) * -1));
+  will-change:transform;
+}
+@media (prefers-color-scheme: dark){.inputbar{background:rgba(20,24,40,.6)}}
+.ibtn{
+  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.7);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  box-shadow:0 2px 10px rgba(80,90,140,.16);
+}
+@media (prefers-color-scheme: dark){.ibtn{background:rgba(255,255,255,.12)}}
+#msgInput{
+  flex:1;min-height:38px;max-height:110px;border-radius:19px;background:rgba(255,255,255,.82);
+  padding:9px 14px;font-size:16px;line-height:1.35;border:1px solid rgba(255,255,255,.8);
+  resize:none;overflow-y:auto;color:var(--ink);
+}
+@media (prefers-color-scheme: dark){#msgInput{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.12)}}
+#sendBtn{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#8f7ae5,#5aa7d8);color:#fff;font-size:15px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(100,90,190,.38);
+}
+#sendBtn:disabled{opacity:.5}
+.rec-hint{
+  position:absolute;left:50%;bottom:96px;transform:translateX(-50%);
+  background:rgba(30,25,60,.82);color:#fff;font-size:13px;padding:10px 18px;border-radius:18px;
+  display:none;align-items:center;gap:8px;z-index:30;
+}
+.rec-hint.on{display:flex}
+
+/* 弹窗 */
+.mask{position:fixed;inset:0;background:rgba(30,25,60,.35);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:none;z-index:40}
+.mask.on{display:block}
+.sheet{
+  position:fixed;left:22px;right:22px;bottom:calc(110px + var(--safe-b));border-radius:24px;z-index:41;
+  background:rgba(250,249,255,.9);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
+  border:1px solid rgba(255,255,255,.6);box-shadow:0 24px 60px rgba(50,40,110,.32);
+  padding:14px 16px 16px;display:none;
+}
+@media (prefers-color-scheme: dark){.sheet{background:rgba(30,34,50,.94);border-color:rgba(255,255,255,.12)}}
+.sheet.on{display:block}
+.sheet .quote{
+  font-size:13px;line-height:1.4;padding:10px 13px;border-radius:14px;color:#fff;
+  background:linear-gradient(150deg,rgba(124,110,200,.5),rgba(96,140,210,.45));
+}
+.sheet .tip{font-size:12px;color:var(--sub);text-align:center;margin:10px 0 12px}
+.sheet .acts{display:flex;gap:10px}
+.sheet .acts button{flex:1;height:44px;border-radius:15px;font-size:15px;font-weight:700}
+.sheet .cancel{background:rgba(120,120,150,.14);color:var(--ink)}
+.sheet .danger{background:linear-gradient(135deg,#ff6b81,#e83a5a);color:#fff}
+.sheet .rowline{display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-bottom:1px solid var(--line);font-size:15px}
+.sheet .rowline:last-child{border-bottom:none}
+.sheet input.sett{text-align:right;font-size:16px;color:var(--sub);flex:1;margin-left:16px;min-width:0}
+.toast{
+  position:fixed;top:calc(16px + var(--safe-t));left:50%;transform:translateX(-50%);
+  background:rgba(30,36,50,.94);color:#fff;padding:9px 18px;border-radius:14px;font-size:13px;
+  z-index:99;opacity:0;transition:opacity .22s;pointer-events:none;max-width:84%;text-align:center;
+}
+.toast.on{opacity:1}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ① 记事页 -->
+<section id="view-note" class="view active">
+  <header class="note-head">
+    <div class="brand">
+      <svg class="app-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="nbg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#323b5e"/>
+            <stop offset="1" stop-color="#12172b"/>
+          </linearGradient>
+          <linearGradient id="nbell" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f7f9ff"/>
+            <stop offset="0.55" stop-color="#cdd5e8"/>
+            <stop offset="1" stop-color="#9aa6c4"/>
+          </linearGradient>
+        </defs>
+        <rect x="1.5" y="1.5" width="97" height="97" rx="24" fill="url(#nbg)"/>
+        <rect x="1.5" y="1.5" width="97" height="97" rx="24" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
+        <path d="M50 25c-2 0-3.6 1.6-3.6 3.6v1.9C38.3 32.4 32.8 39 32.8 47.2v9.3c0 2.3-.9 4.5-2.6 6.1l-3.3 3.3c-1.1 1.1-.3 3 1.2 3h43.8c1.5 0 2.3-1.9 1.2-3l-3.3-3.3c-1.7-1.6-2.6-3.8-2.6-6.1v-9.3c0-8.2-5.5-14.8-13.6-16.7v-1.9c0-2-1.6-3.6-3.6-3.6z" fill="url(#nbell)"/>
+        <path d="M50 32.5c-.9 0-1.6.7-1.6 1.6v2.1c-6.7 1.6-11 7.1-11 13.9v7.1c0 2.6-.6 4.6-1.9 6.3h29c-1.3-1.7-1.9-3.7-1.9-6.3v-7.1c0-6.8-4.3-12.3-11-13.9v-2.1c0-.9-.7-1.6-1.6-1.6z" fill="rgba(255,255,255,.28)"/>
+        <path d="M43 71.5a7 7 0 0 0 14 0z" fill="url(#nbell)"/>
+      </svg>
+      <h1 id="noteTitle">Notify<span id="badge" class="badge hidden">0</span></h1>
+    </div>
+    <span class="note-saved">已保存</span><button id="editBtn" class="ghost">编辑</button>
+  </header>
+  <div class="paper"><textarea id="noteArea" placeholder=""></textarea></div>
+  <footer class="note-toolbar"><span>☰</span><span>◍</span><span>📎</span><span>✎</span></footer>
+</section>
+
+<!-- ② 配对页 -->
+<section id="view-pair" class="view">
+  <div class="pair-card">
+    <h2>配对一次，之后就不用再配</h2>
+    <p id="pairDesc">第一步：创建的一方自己想一个 6 位数字（留空点「创建口令」也行，会自动帮你生成），把数字当面或用别的方式告诉对方；第二步：另一方填同一个数字点下面的「加入」。</p>
+    <input id="codeInput" class="code-input" inputmode="numeric" maxlength="6" placeholder="——————">
+    <button id="pairCreate" class="btn-main">创建口令</button>
+    <button id="pairJoin" class="btn-main" style="background:rgba(120,120,160,.22);color:var(--ink);box-shadow:none">我已有一间，输入口令加入</button>
+    <button id="pairRestore" style="margin-top:2px;background:none;border:none;color:var(--sub);font-size:13px;text-decoration:underline">换新手机或换了网址？用「搬家包」恢复 ›</button>
+    <div id="pairStatus" class="pair-status"></div>
+  </div>
+  <button id="pairBack">‹ 返回记事本</button>
+</section>
+
+<!-- ③ 聊天页 -->
+<section id="view-chat" class="view">
+  <header class="chat-head">
+    <button id="backBtn" class="back-btn">‹</button>
+    <div class="chat-title-wrap">
+      <div class="chat-title" id="chatTitle">学习计划</div>
+      <div class="chat-date" id="chatDate"></div>
+    </div>
+    <div class="head-spacer"></div>
+  </header>
+  <div class="chat-body" id="chatBody"></div>
+  <form class="inputbar" id="inputbar">
+    <label class="ibtn" for="imgInput">📷</label>
+    <input type="file" id="imgInput" accept="image/*" class="hidden">
+    <textarea id="msgInput" rows="1" placeholder="写点什么…"></textarea>
+    <button type="button" id="micBtn" class="ibtn">🎤</button>
+    <button type="submit" id="sendBtn">↑</button>
+  </form>
+  <div class="rec-hint" id="recHint">● 正在录音… 上滑取消</div>
+</section>
+
+<!-- 弹窗 -->
+<div class="mask" id="mask"></div>
+<div class="sheet" id="recallSheet">
+  <div class="quote" id="recallQuote"></div>
+  <div class="tip">撤回后，对方那边这条也会同时消失</div>
+  <div class="acts">
+    <button class="cancel" data-close>取消</button>
+    <button class="danger" id="recallConfirm">撤回</button>
+  </div>
+</div>
+<div class="sheet" id="settingsSheet">
+  <div class="rowline"><span>聊天标题</span><input id="setTitle" class="sett" maxlength="12"></div>
+  <div class="rowline"><span>房间口令</span><span id="setPass" style="color:var(--sub);font-size:14px;letter-spacing:2px">—</span></div>
+  <div class="rowline"><span>密钥指纹</span><span id="setFp" style="color:var(--sub);font-size:14px">—</span></div>
+  <div class="rowline"><span>换手机 / 换网址</span><button id="setMove" style="color:#5aa7d8;font-size:15px;font-weight:700">搬家 ›</button></div>
+  <div class="rowline"><span>清除本地数据</span><button id="setReset" style="color:#ff3b30;font-size:15px">清除</button></div>
+  <div class="acts" style="margin-top:14px"><button class="cancel" data-close>关闭</button></div>
+</div>
+<div class="sheet" id="moveSheet">
+  <div class="quote" id="moveTitle">搬家</div>
+  <div class="tip" id="moveTip"></div>
+  <textarea id="moveText" spellcheck="false" style="width:100%;min-height:110px;font-size:12px;line-height:1.4;border-radius:12px;padding:10px;border:1px solid rgba(120,120,160,.25);background:rgba(255,255,255,.65);color:var(--ink);resize:none"></textarea>
+  <div class="acts" style="margin-top:12px">
+    <button class="cancel" data-close>关闭</button>
+    <button class="danger" id="moveBtn">复制全部</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="js/crypto.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
