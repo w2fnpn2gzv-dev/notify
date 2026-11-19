@@ -2,7 +2,7 @@
    - 网络优先：每次改版都能拿到新代码
    - 离线时回落缓存壳（能打开界面，消息等联网后补）
    - 只缓存同源、无查询串的静态资源，避免 ?demo=1 之类污染缓存 */
-const CACHE = "notify-v15";
+const CACHE = "notify-v16";
 const SHELL = [
   "./",
   "./index.html",

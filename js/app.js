@@ -105,6 +105,10 @@ async function boot() {
     toast(e.message || "本机存储不可用，无法保存密钥", 6000);
   }
   state.pair = await NotifyCrypto.loadPair();
+  // 提前派生聊天密钥：记录本加密落盘/解密读取都依赖它（进入聊天前就要可用）
+  if (state.pair && state.pair.peerPub && state.identity && !state.key) {
+    try { state.key = await NotifyCrypto.deriveKey(state.identity.priv, state.pair.peerPub); } catch {}
+  }
   await checkIdentityReset();
 
   // 登录（网络失败不阻塞界面，后台重试）
@@ -173,24 +177,44 @@ function bindLock() {
 
 /* ---------------- 记录本（首页笔记本）----------------
    内容自动保存到本机 localStorage：第二次打开、切后台回来都还在。
-   只存本机、不上传服务器（和配对密钥一样的位置，换手机不带过去）。 */
+   只存本机、不上传服务器（和配对密钥一样的位置，换手机不带过去）。
+   加固：有聊天密钥时用 AES-256-GCM 加密后再落盘（NTNOTE1- 前缀），
+   手机被人解锁也读不到内容；无密钥（未配对/演示）时退化为明文。 */
 let noteSaveTimer = null;
+const NOTE_ENC_PREFIX = "NTNOTE1-";
+
+async function saveNoteText(text) {
+  if (state.key) {
+    const payload = await NotifyCrypto.encrypt(state.key, { note: text });
+    localStorage.setItem("notify-note", NOTE_ENC_PREFIX + JSON.stringify(payload));
+  } else {
+    localStorage.setItem("notify-note", text);
+  }
+}
+
+async function loadNoteText() {
+  const raw = (() => { try { return localStorage.getItem("notify-note") || ""; } catch { return ""; } })();
+  if (!raw.startsWith(NOTE_ENC_PREFIX)) return raw;   // 旧明文，直接返回
+  if (!state.key) return "";                          // 有密文但密钥还没就绪（boot 已提前派生，理论到不了）
+  const p = JSON.parse(raw.slice(NOTE_ENC_PREFIX.length));
+  const obj = await NotifyCrypto.decrypt(state.key, p);
+  return obj && typeof obj.note === "string" ? obj.note : "";
+}
 
 function bindNotePersistence() {
   const el = $("noteArea");
   if (!el) return;
-  try { el.value = localStorage.getItem("notify-note") || ""; } catch {}
+  loadNoteText().then((v) => { el.value = v; }).catch(() => {});
   el.addEventListener("input", () => {
     clearTimeout(noteSaveTimer);
     noteSaveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem("notify-note", el.value);
+      saveNoteText(el.value).then(() => {
         const tip = document.querySelector(".note-saved");
         if (tip) {
           tip.classList.add("on");
           setTimeout(() => tip.classList.remove("on"), 1200);
         }
-      } catch {}
+      }).catch(() => {});
     }, 500);
   });
 }
@@ -1478,17 +1502,34 @@ function moveBundle() {
   };
 }
 
-async function buildMoveBundle() {
+async function buildMoveBundle(encryptPass) {
   if (!state.identity || !state.pair || !state.pair.convId || state.pair.convId === "demo") {
     throw new Error("这台设备还没有可搬家的房间");
   }
   const json = JSON.stringify(moveBundle());
-  return "NTFY1-" + NotifyCrypto.bufToB64(new TextEncoder().encode(json));
+  if (!encryptPass) {
+    return "NTFY1-" + NotifyCrypto.bufToB64(new TextEncoder().encode(json));
+  }
+  // NTFY2-：再用口令派生密钥整体加密一层——拿到文本的人没有口令也读不出任何内容
+  const salt = NotifyCrypto.newSalt();
+  const key = await NotifyCrypto.keyFromPasscode(encryptPass, salt);
+  const payload = await NotifyCrypto.encrypt(key, { bundle: json });
+  return "NTFY2-" + salt + "-" + payload.iv + "-" + payload.data;
 }
 
-async function applyMoveBundle(text) {
+async function applyMoveBundle(text, decryptPass) {
   const raw = (text || "").trim();
-  if (!raw.startsWith("NTFY1-")) throw new Error("不是有效的搬家包（应以 NTFY1- 开头）");
+  if (raw.startsWith("NTFY2-")) {
+    const parts = raw.slice(6).split("-");
+    if (parts.length !== 3) throw new Error("搬家包内容损坏，请在旧设备上重新导出");
+    if (!decryptPass) throw new Error("这份搬家包已加密，请先填写导出时使用的口令");
+    const [salt, iv, data] = parts;
+    const key = await NotifyCrypto.keyFromPasscode(decryptPass, salt);
+    const obj = await NotifyCrypto.decrypt(key, { iv, data });
+    if (!obj || !obj.bundle) throw new Error("口令不对，解不开这份搬家包");
+    return applyMoveBundle(obj.bundle.startsWith("NTFY1-") ? obj.bundle : "NTFY1-" + NotifyCrypto.bufToB64(new TextEncoder().encode(obj.bundle)), "");
+  }
+  if (!raw.startsWith("NTFY1-")) throw new Error("不是有效的搬家包（应以 NTFY1- 或 NTFY2- 开头）");
   let b;
   try { b = JSON.parse(new TextDecoder().decode(NotifyCrypto.b64ToBuf(raw.slice(6)))); }
   catch { throw new Error("搬家包内容损坏，请在旧设备上重新导出"); }
@@ -1532,21 +1573,22 @@ function openMoveSheet(mode) {
   maskGuardUntil = Date.now() + 500;
   closeSheets();
   $("moveText").value = "";
+  $("movePass").value = "";
   if (mode === "export") {
     $("moveTitle").textContent = "搬家 · 导出这间房";
+    $("movePass").style.display = "block";
     $("moveTip").innerHTML =
-      "下面这串文本 = 房间的全部钥匙（含私钥和登录信息）。<br>" +
-      "复制后保存到只有你自己能拿到的地方（备忘录/私密笔记），<b>不要发给任何人</b>；" +
-      "在新设备上点「粘贴搬家包恢复」即可原样恢复。<br><b>导入成功后旧设备会停止收发（钥匙搬家了）。</b>";
-    $("moveBtn").textContent = "复制全部";
+      "建议先填上方口令：<b>用房间口令把整包再加密一层</b>，拿到文本的人没有口令也读不出任何内容。<br>" +
+      "点「生成并复制」后，把这串文本存到只有你自己能拿到的地方，<b>不要发给任何人</b>；" +
+      "新设备上点「粘贴搬家包恢复」即可原样恢复。<b>导入成功后旧设备会停止收发（钥匙搬家了）。</b>";
+    $("moveBtn").textContent = "生成并复制";
     $("mask").classList.add("on");
     sheet.classList.add("on");
-    buildMoveBundle().then((t) => { $("moveText").value = t; })
-      .catch((e) => { $("moveText").value = ""; toast(e.message || "导出失败", 3200); });
   } else {
     $("moveTitle").textContent = "搬家 · 恢复房间";
+    $("movePass").style.display = "block";
     $("moveTip").innerHTML =
-      "把旧设备导出的搬家包（NTFY1- 开头的一串文本）粘贴到下面，点「恢复房间」。<br>" +
+      "把旧设备导出的搬家包（NTFY- 开头的一串文本）粘贴到下面；<b>如果导出时加了密，上方要填同一个口令</b>。<br>" +
       "恢复后房间、口令、记录本与历史消息全部原样回来，无需重新配对。";
     $("moveBtn").textContent = "恢复房间";
     $("mask").classList.add("on");
@@ -1557,9 +1599,21 @@ function openMoveSheet(mode) {
 function bindMove() {
   $("moveBtn").onclick = async () => {
     if (moveMode === "export") {
-      const t = $("moveText").value;
-      if (!t) { toast("还没有生成搬家包", 2000); return; }
-      toast((await copyText(t)) ? "已复制，请妥善保存（用完建议删除）" : "复制失败，请长按文本手动全选复制", 3000);
+      const btn = $("moveBtn");
+      btn.disabled = true;
+      try {
+        const pass = ($("movePass").value || "").trim();
+        const t = await buildMoveBundle(pass);
+        $("moveText").value = t;
+        const copied = await copyText(t);
+        toast(copied
+          ? (pass ? "已生成加密包并复制，请妥善保存" : "已复制（未加密，建议下次填写口令）")
+          : "复制失败，请长按文本手动全选复制", 3200);
+      } catch (e) {
+        toast(e.message || "导出失败", 3200);
+      } finally {
+        btn.disabled = false;
+      }
       return;
     }
     // 导入
@@ -1568,7 +1622,7 @@ function bindMove() {
     if (!raw.trim()) { toast("请先粘贴搬家包", 2000); return; }
     btn.disabled = true;
     try {
-      await applyMoveBundle(raw);
+      await applyMoveBundle(raw, ($("movePass").value || "").trim());
       closeSheets();
       toast("房间已恢复，正在进入…", 2400);
       setTimeout(() => location.reload(), 900);

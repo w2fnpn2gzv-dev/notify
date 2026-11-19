@@ -151,6 +151,16 @@ const NotifyCrypto = (() => {
     return Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
   }
 
+  /* 搬家包 / 本地加密用：由口令派生一把独立 AES-256 密钥（与聊天密钥无关） */
+  async function keyFromPasscode(code, saltHex) {
+    const salt = saltHex ? hexToBytes(saltHex) : enc.encode("notify-local-v1");
+    const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+  }
+
   /* ---------- ECDH → AES-256-GCM ---------- */
   async function deriveKey(privJwk, pubJwk) {
     const priv = await crypto.subtle.importKey(
@@ -202,7 +212,7 @@ const NotifyCrypto = (() => {
   return {
     WEB_CRYPTO_OK,
     loadIdentity, saveIdentity, savePair, loadPair, clearPair,
-    hashCode, newSalt, deriveKey, encrypt, decrypt, fingerprint, pubFingerprint,
+    hashCode, newSalt, keyFromPasscode, deriveKey, encrypt, decrypt, fingerprint, pubFingerprint,
     bufToB64, b64ToBuf,
   };
 })();
